@@ -1,0 +1,23 @@
+1
+00:00:00,504 --> 00:00:05,270
+Bonour. Je m'appelle Matt Faus et ceci est une vidéo test
+
+2
+00:00:05,270 --> 00:00:09,704
+que je prévois de publier sur YouTube, puis de contrôler la transcription
+
+3
+00:00:09,704 --> 00:00:15,370
+par reconnaissance automatique de la voix, et enfin, j'espère,
+
+4
+00:00:15,370 --> 00:00:19,570
+de traduire cette conversation en plusieurs langues
+
+5
+00:00:19,570 --> 00:00:25,370
+et d'utiliser Amara pour synchroniser la publication de ces différentes traductions
+
+6
+00:00:25,370 --> 00:00:29,370
+sur YouTube. A bientôt.

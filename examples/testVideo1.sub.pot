@@ -1,0 +1,42 @@
+#: 0:00:01.389,0:00:06.839
+msgid "bowhunting was not flawless and discuss"
+"the test video that i plan to upload to"
+msgstr "bowhunting was not flawless and discuss"
+"the test video that i plan to upload to"
+
+#: 0:00:06.839,0:00:08.439
+msgid "youtube"
+msgstr "youtube"
+
+#: 0:00:08.439,0:00:10.500
+msgid "check out the automatic"
+msgstr "check out the automatic"
+
+#: 0:00:10.500,0:00:13.039
+msgid "forest transcription"
+msgstr "forest transcription"
+
+#: 0:00:13.039,0:00:16.839
+msgid "and then uh... hopefully translate this"
+msgstr "and then uh... hopefully translate this"
+
+#: 0:00:16.839,0:00:20.730
+msgid "conversation into various languages"
+msgstr "conversation into various languages"
+
+#: 0:00:20.730,0:00:22.439
+msgid "and many years of mara"
+msgstr "and many years of mara"
+
+#: 0:00:22.439,0:00:26.009
+msgid "to sinking does different translations"
+msgstr "to sinking does different translations"
+
+#: 0:00:26.009,0:00:28.470
+msgid "onto you too"
+msgstr "onto you too"
+
+#: 0:00:28.470,0:00:29.240
+msgid "seasons"
+msgstr "seasons"
+

@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import os
 
+import format
 import secrets
 import youtube
 
@@ -42,9 +43,11 @@ def main():
                 caption_track.language, num_lines,
                 caption_track.machine_generated, file_name)
 
-            'Writ'
-            with open(file_name, 'w') as file_obj:
-                file_obj.write(caption_track.track_content)
+            if caption_track.machine_generated:
+                reader = format.SubTranscriptReader(caption_track.track_content)
+
+                writer = format.PotTranscriptWriter(reader)
+                print writer.pot_content
 
 
 
