@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import os
 
+import crowdin
 import format
 import secrets
 import youtube
@@ -10,7 +11,6 @@ def main():
     # TODO(mattfaus): Add a bunch of options to download single videos, only
     # machine-generated tracks, to a specific destination directory,
     # transform into different file formats, etc.
-
 
     fetcher = youtube.YouTubeCaptionFetcher(secrets.google_email,
         secrets.google_password, secrets.youtube_username)
@@ -47,8 +47,16 @@ def main():
                 reader = format.SubTranscriptReader(caption_track.track_content)
 
                 writer = format.PotTranscriptWriter(reader)
-                print writer.pot_content
+                # print writer.pot_content
 
+                files_to_add = {
+                    'test1/test.pot': writer.get_file(),
+                    'test1/test2.pot': writer.get_file(),
+                }
+
+                print 'Syncing to CrowdIn'
+                ci_client = crowdin.CrowdInClient(secrets.crowdin_ident, secrets.crowdin_key)
+                ci_client.sync_files(files_to_add)
 
 
 if __name__ == "__main__":

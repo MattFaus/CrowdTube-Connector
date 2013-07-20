@@ -1,3 +1,4 @@
+import cStringIO
 import re
 
 Format = {
@@ -122,8 +123,11 @@ class SubTranscriptReader(TranscriptReader):
         # TODO(mattfaus): Create named tuples for more readable code?
         return [(k, self.entries[k][1]) for k in keys]
 
+
 class TranscriptWriter(object):
-    pass
+    def get_file(self):
+        """Returns a file-like object with the contents of the transcript."""
+        raise NotImplemented('Must be implemented in Sub-classes.')
 
 
 class PotTranscriptWriter(TranscriptWriter):
@@ -154,4 +158,6 @@ msgstr \"%(text)s\"
                 'text': self._format_line(entry[1]),
             }
 
-    # def write_to_file(self, file_path):
+    def get_file(self):
+        # TODO(mattfaus): Move into base class?
+        return cStringIO.StringIO(self.pot_content)
