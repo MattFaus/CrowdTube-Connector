@@ -1,5 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 import os
+import zipfile
 
 import crowdin
 import format
@@ -7,10 +8,7 @@ import secrets
 import youtube
 
 
-def main():
-    # TODO(mattfaus): Add a bunch of options to download single videos, only
-    # machine-generated tracks, to a specific destination directory,
-    # transform into different file formats, etc.
+def test_youtube_to_crowdin_sync():
 
     fetcher = youtube.YouTubeCaptionFetcher(secrets.google_email,
         secrets.google_password, secrets.youtube_username)
@@ -58,6 +56,20 @@ def main():
                 ci_client = crowdin.CrowdInClient(secrets.crowdin_ident, secrets.crowdin_key)
                 ci_client.sync_files(files_to_add)
 
+def test_crowdin_to_youtube_sync():
+    ci_client = crowdin.CrowdInClient(secrets.crowdin_ident, secrets.crowdin_key)
+
+    # Only works every 30 min
+    # print ci_client.build_export_zip()
+
+    zip_contents = ci_client.download_translations()
+    with open('/tmp/all.zip', 'w') as f:
+        f.write(zip_contents)
 
 if __name__ == "__main__":
-    main()
+    # TODO(mattfaus): Add a bunch of options to download single videos, only
+    # machine-generated tracks, to a specific destination directory,
+    # transform into different file formats, etc.
+
+    # test_youtube_to_crowdin_sync()
+    test_crowdin_to_youtube_sync()

@@ -1,5 +1,7 @@
 """Most of this code copied from upload_i18n.py and download_i18n.py, written
 by Craig Silverstein for Khan Academy's i18n effort.
+
+See here for reference:  http://crowdin.net/page/api
 """
 import json
 import requests
@@ -9,20 +11,56 @@ import secrets
 
 class CrowdInClient(object):
 
+    EXPORT_SUCCESS_CODES = ('built', 'success')
+
     def __init__(self, identifier, key):
         self.identifier = identifier
         self.key = key
 
-    def _build_api_url(self, type):
+    def _build_api_url(self, action):
         """Generate a URL needed for making a request to the translation API."""
-        url = ('http://api.crowdin.net/api/project/%(ident)s/%(type)s?key=%(key)s'
+        url = ('http://api.crowdin.net/api/project/%(ident)s/%(action)s?key=%(key)s'
                '&json=')  # Causes returns to be JSON instead of XML-encoded
 
         return (url % {
             'ident': self.identifier,
             'key': self.key,
-            'type': type
+            'action': action
         })
+
+    def _handle_error_response(self, response):
+        if response.status_code != 200:
+            print response.status_code, response.content
+            return True
+        return False
+
+    # Management-related functions
+    ###########################################################################
+    def edit_project(self, **kwargs):
+        """
+        http://crowdin.net/page/api/edit-project
+        """
+        url = self._build_api_url('edit-project')
+
+        bool_fields = (
+            'hide_duplicates',
+            'export_approved_only',
+            'public_downloads',
+        )
+
+        # Translate python-bools to crowdin-bools, which are '1' or '0'
+        for field in bool_fields:
+            if kwargs.get(field) and isinstance(kwargs[field], bool):
+                kwargs[field] = str(int(kwargs[field]))
+
+        response = requests.post(url, data=kwargs)
+
+        if self._handle_error_response(response):
+            return False
+        return True
+
+    # Download-related functions
+    ###########################################################################
 
     def get_project_info(self):
         """Looks like:
@@ -104,7 +142,58 @@ class CrowdInClient(object):
                 retval.update(self.get_files(entry, new_prefix))
         return retval
 
+    def build_export_zip(self, approved_only=True):
+        """Build ZIP archive with the latest translations. Please note that
+        this method can be invoked only once for 30 minutes. Also API call will
+        be ignored if there were no any changes in project since last export.
+
+        http://crowdin.net/page/api/export
+
+        Returns:
+            On failure, the entire response json object.
+            On success, the status, usually 'built' or 'skipped'.
+                'built' means the .zip file was created and can be downloaded
+                'skipped' is returned if there have been no changes since the
+                last export
+                TODO(mattfaus): Is 'skipped' also returned if you call more
+                frequently than once per 30 mins?
+        """
+        self.edit_project(export_approved_only=approved_only)
+
+        url = self._build_api_url('export')
+        response = requests.post(url)
+
+        if self._handle_error_response(response):
+            return response.json()
+        else:
+            return response.json()['success']['status']
+
+    def download_translations(self, package='all'):
+        """Download ZIP file with translations. You can choose the language of
+        translation you need or download all of them at once.
+
+        http://crowdin.net/page/api/download
+
+        Returns:
+            The zip file.
+        """
+        url = self._build_api_url('download/%s.zip' % package)
+
+        response = requests.get(url)
+
+        if self._handle_error_response(response):
+            return None
+        else:
+            return response.content
+
+
+    # Upload-related functions
+    ###########################################################################
+
     def add_directory(self, name):
+        """
+        http://crowdin.net/page/api/add-directory
+        """
         url = self._build_api_url('add-directory')
         data = { 'name': name }
         print url
@@ -186,6 +275,7 @@ class CrowdInClient(object):
 
     def add_files(self, files, batch_size=10):
         """
+        http://crowdin.net/page/api/add-file
 
         Arguments:
             files - A dict like: {
@@ -196,6 +286,7 @@ class CrowdInClient(object):
 
     def update_files(self, files, batch_size=10):
         """
+        http://crowdin.net/page/api/update-file
 
         Arguments:
             files - A dict like: {
@@ -208,5 +299,8 @@ class CrowdInClient(object):
 # A quick test to make sure your CrowdIn credentials are working
 if __name__ == "__main__":
     client = CrowdInClient(secrets.crowdin_ident, secrets.crowdin_key)
-    files = client.get_files()
-    print files
+
+    print json.dumps(client.get_project_info(), indent=2)
+
+    # files = client.get_files()
+    # print files
