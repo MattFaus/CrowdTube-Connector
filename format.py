@@ -38,31 +38,9 @@ class Convertor(object):
 
 
 class TranscriptReader(object):
-
-    def list_entries(self):
-        """Returns a list of (timestamp, content) tuples in time-order."""
-        raise NotImplemented('Sub-classes must implement this.')
-
-
-class SrtTranscriptReader(TranscriptReader):
-
-    SRT_REGEX_SORT_ID = '\d'
-    SRT_REGEX_TIMESTAMP = '((?P<start_time>\d\d:\d\d:\d\d(,\d)?) --> (?P<end_time>\d\d:\d\d:\d\d(,\d)?))'
-
-    def __init__(self, content):
-        self.content = content
-        self._build_entries()
-
-    def _build_entries(self):
-        sort_id_regex = re.compile(self.SRT_REGEX_SORT_ID)
-        timestamp_regex = re.compile(self.SRT_REGEX_TIMESTAMP)
-
-        self.entries = {}
-
-        cur_timestamp = None
-        cur_string = ""
-
-        # TODO(mattfaus): Implement.
+    """Returns subtitle entries stored in either a .sub file or a .pot file."""
+    # 0:00:01.389,0:00:06.839
+    REGEX_TIMESTAMP = '((?P<start_time>\d:\d\d:\d\d(\.\d\d\d)?),(?P<end_time>\d:\d\d:\d\d(\.\d\d\d)?))'
 
     def list_entries(self):
         # Sort dictionary entries by their keys
@@ -74,15 +52,13 @@ class SrtTranscriptReader(TranscriptReader):
 
 
 class SubTranscriptReader(TranscriptReader):
-    # 0:00:01.389,0:00:06.839
-    SUB_REGEX_TIMESTAMP = '((?P<start_time>\d:\d\d:\d\d(\.\d\d\d)?),(?P<end_time>\d:\d\d:\d\d(\.\d\d\d)?))'
 
     def __init__(self, content):
         self.content = content
         self._build_entries()
 
     def _build_entries(self):
-        timestamp_regex = re.compile(self.SUB_REGEX_TIMESTAMP)
+        timestamp_regex = re.compile(self.REGEX_TIMESTAMP)
 
         self.entries = {}
 
@@ -93,10 +69,10 @@ class SubTranscriptReader(TranscriptReader):
             timestamp_match = timestamp_regex.search(line)
 
             if cur_timestamp:
-                if not line:
+                if not line:  # Entries are seperated by a blank lin
                     # Remove the last newline
                     cur_string = cur_string[:-1]
-                    self.entries[cur_timestamp] = (cur_timestamp, cur_string)
+                    self.entries[cur_timestamp] = cur_string
                     cur_timestamp = None
                     cur_string = ""
                 else:
@@ -111,17 +87,66 @@ class SubTranscriptReader(TranscriptReader):
                     raise ValueError('Format not understood')
 
         if cur_timestamp and cur_string:
-            self.entries[cur_timestamp] = (cur_timestamp, cur_string)
+            self.entries[cur_timestamp] = cur_string[:-1]
             cur_timestamp = None
             cur_string = ""
 
-    def list_entries(self):
-        # Sort dictionary entries by their keys
-        keys = self.entries.keys()
-        keys.sort()
 
-        # TODO(mattfaus): Create named tuples for more readable code?
-        return [(k, self.entries[k][1]) for k in keys]
+class PotTranscriptReader(TranscriptReader):
+
+    MSGID_BREAKER = 'msgid "'
+    MSGSTR_BREAKER = 'msgstr "'
+
+    def __init__(self, content):
+        self.content = content
+        self._build_entries()
+
+    def _build_entries(self):
+        timestamp_regex = re.compile(self.REGEX_TIMESTAMP)
+
+        self.entries = {}
+
+        cur_timestamp = None
+        cur_id = ""
+        cur_string = ""
+
+        # TODO(mattfaus): Try to do this with a regex instead?
+        # http://stackoverflow.com/questions/8433686/is-there-a-php-library-for-parsing-gettext-po-pot-files
+        # #: ((?P<start_time>\d:\d\d:\d\d(\.\d\d\d)?),(?P<end_time>\d:\d\d:\d\d(\.\d\d\d)?)).*\n.*msgid\s+("(.*)"\s+)+msgstr
+
+        for line in self.content.splitlines():
+            if not line and cur_timestamp and cur_string:
+                # We found one, so add it and continue
+                self.entries[cur_timestamp] = cur_string[:-1]  # remove last \n
+                cur_timestamp = None
+                cur_id = ""
+                cur_string = ""
+                continue
+
+            if not cur_timestamp:
+                # We're looking for the next timestamp
+                timestamp_match = timestamp_regex.search(line)
+                if timestamp_match:
+                    cur_timestamp = timestamp_match.groups()[0]
+            else:
+                if not cur_id:
+                    # We're looking for the next msgid
+                    if line.startswith(self.MSGID_BREAKER):  # 'msgid "'
+                        cur_id += line[len(self.MSGID_BREAKER):-1] + '\n'
+                elif line.startswith('"'):
+                    cur_id += line[1:-1] + '\n'
+
+                if not cur_string:
+                    # We're looking for the next msgstr
+                    if line.startswith(self.MSGSTR_BREAKER):  # 'msgstr "'
+                        cur_string += line[len(self.MSGSTR_BREAKER):-1] + '\n'
+                elif line.startswith('"'):
+                    # We're building cur_string
+                    cur_string += line[1:-1] + '\n'
+
+        if cur_timestamp and cur_string:
+            # We found one, so add it and continue
+            self.entries[cur_timestamp] = cur_string[:-1]  # remove last \n
 
 
 class TranscriptWriter(object):
@@ -161,3 +186,8 @@ msgstr \"%(text)s\"
     def get_file(self):
         # TODO(mattfaus): Move into base class?
         return cStringIO.StringIO(self.pot_content)
+
+
+
+class SubTranscriptWriter(TranscriptWriter):
+    pass

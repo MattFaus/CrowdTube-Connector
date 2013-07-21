@@ -31,6 +31,8 @@ class YouTubeCaptionFetcher(object):
             self.videos[new_video.video_id] = new_video
 
 
+# TODO(mattfaus): Suck these two classes into the YouTubeCaptionEditor, above
+# make the YouTubeCaptionEditor behave more like a full-fledged youtube client
 class YouTubeVideo(object):
 
     def __init__(self, video_entry, youtube_client=None):

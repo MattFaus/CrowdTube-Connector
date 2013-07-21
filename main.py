@@ -62,9 +62,24 @@ def test_crowdin_to_youtube_sync():
     # Only works every 30 min
     # print ci_client.build_export_zip()
 
-    zip_contents = ci_client.download_translations()
-    with open('/tmp/all.zip', 'w') as f:
-        f.write(zip_contents)
+    # zip_contents = ci_client.download_translations()
+    # with open('/tmp/all.zip', 'w') as f:
+    #     f.write(zip_contents)
+
+
+    example_po = '/Users/mattfaus/dev/CrowdTube-Connector/examples/testVideo1.sub-es-ES.po'
+
+    with open(example_po, 'r') as ep:
+        r = format.PotTranscriptReader(ep.read())
+
+    print r.list_entries()
+
+    # For each language in the zipfile:
+        # Create the track contents
+
+        # Delete the old one from YouTube
+        # Add the new one
+
 
 if __name__ == "__main__":
     # TODO(mattfaus): Add a bunch of options to download single videos, only
