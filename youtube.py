@@ -62,10 +62,8 @@ class YouTubeCaptionEditor(object):
             track_content, client_id=GDATA_API_CLIENT_ID,
             developer_key=secrets.google_developer_key, fmt='sub')
 
-        if response.status_code != 200:
-            print response.status_code, response.content
-            return False
-        return True
+        # Returns a TrackEntry object
+        return response
 
 
 
@@ -75,7 +73,9 @@ class YouTubeVideo(object):
 
     def __init__(self, video_entry, youtube_client=None):
         self.youtube_client = youtube_client
-        self.video_id = video_entry.GetId()
+        # tag:youtube.com,2008:video:SNrEiiJwD4Y
+        id_parts = video_entry.GetId().split(':')
+        self.video_id = id_parts[id_parts.index('video') + 1]
         self.title = video_entry.title.text
 
         caption_link = video_entry.get_link(
@@ -93,7 +93,7 @@ class YouTubeVideo(object):
 
         self.caption_tracks = {}
 
-    def get_caption_tracks(self, download=True):
+    def get_caption_tracks(self, download=False):
         if not self.has_entries:
             return
 
@@ -108,6 +108,14 @@ class YouTubeVideo(object):
 
             if download:
                 new_track.download_track()
+
+    def get_machine_generated_track(self):
+        self.get_caption_tracks()
+        for src, caption_track in self.caption_tracks.iteritems():
+            if caption_track.machine_generated:
+                caption_track.download_track()
+                return caption_track
+
 
 
 class YouTubeCaptionTrack(object):

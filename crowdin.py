@@ -3,10 +3,46 @@ by Craig Silverstein for Khan Academy's i18n effort.
 
 See here for reference:  http://crowdin.net/page/api
 """
+import cStringIO
 import json
 import requests
+import zipfile
 
 import secrets
+
+class CrowdInZipFile(object):
+
+    def __init__(self, zip_file):
+        self.zip_file = zipfile.ZipFile(cStringIO.StringIO(zip_file))
+
+    @staticmethod
+    def get_po_path(title, video_id):
+        # TODO(mattfaus): Perform more complex foldering
+        return 'subtitles/%s~%s.po' % (title, video_id)
+
+    def get_file_count(self):
+        return len(self.zip_file.namelist())
+
+    def get_all_translations(self, file_path):
+        """Finds all translations of a specific file_path.
+
+        Returns a dict like: {
+            language: pot_format_translated_content,
+        }
+        """
+        found_translations = {}
+
+        for filename in self.zip_file.namelist():
+            if filename.endswith('/'):  # a directory
+                continue
+
+            locale = filename.split('/', 1)[0]
+            path = filename.split('/', 1)[1]
+
+            if path == file_path:
+                found_translations[locale] = self.zip_file.read(filename).decode('utf-8')
+
+        return found_translations
 
 
 class CrowdInClient(object):
@@ -121,26 +157,39 @@ class CrowdInClient(object):
         project_info_url = self._build_api_url('info')
         return requests.post(project_info_url).json()
 
-    def get_files(self, project_info=None, dir_prefix=''):
-        """Return a list of all files currently in crowdin.
+    def get_files_and_dirs(self, project_info=None, dir_prefix=''):
+        """Returns all files and directories currently in crowdin.
 
         If a file is in a subdir, the filename is 'dir/subdir/filename'.
 
         Arguments:
             project_info: used for recursive calls.
             dir_prefix: used for recursive calls.
+
+        Returns (x, y), where:
+            x - a list of all files in CrowdIn
+            y - a list of all directories in CrowdIn
+
         """
         if project_info == None:
             project_info = self.get_project_info()
 
-        retval = set()
+        found_files = set()
+        found_dirs = set()
         for entry in project_info.get('files', []):
             if entry['node_type'] == 'file':
-                retval.add(dir_prefix + entry['name'])
+                found_files.add(dir_prefix + entry['name'])
             elif entry['node_type'] == 'directory':
                 new_prefix = '%s%s/' % (dir_prefix, entry['name'])
-                retval.update(self.get_files(entry, new_prefix))
-        return retval
+                sub_files, sub_dirs = self.get_files_and_dirs(entry, new_prefix)
+                found_files.update(sub_files)
+                sub_dirs = set(['%s%s' % (dir_prefix, d) for d in sub_dirs])
+                found_dirs.update(sub_dirs)
+
+        if dir_prefix:
+            found_dirs.add('%s/' % project_info['name'])
+
+        return (found_files, found_dirs)
 
     def build_export_zip(self, approved_only=True):
         """Build ZIP archive with the latest translations. Please note that
@@ -196,7 +245,6 @@ class CrowdInClient(object):
         """
         url = self._build_api_url('add-directory')
         data = { 'name': name }
-        print url
 
         response = requests.post(url, data=data)
 
@@ -210,17 +258,26 @@ class CrowdInClient(object):
         """Intelligently adds or updates files by checking to see if they
         already exist on CrowdIn and issuing the relevant call.
 
+        Also, creates directories as needed.
+
         Arguments:
             files - A dict like: {
                 'full/file/path/video.pot': file-like-object of contents
             }
 
         """
-        existing_files = self.get_files()
-        all_files = set(files.keys())
-        add_files = sorted(all_files - existing_files)
-        delete_files = sorted(existing_files - all_files)
-        update_files = sorted(all_files & existing_files)
+        existing_files, existing_dirs = self.get_files_and_dirs()
+
+        files_to_upload = set(files.keys())
+        directories_to_upload = set([f[:f.rfind('/')+1] for f in files_to_upload])
+
+        add_directories = directories_to_upload - existing_dirs
+        for add_dir in add_directories:
+            self.add_directory(add_dir)
+
+        add_files = sorted(files_to_upload - existing_files)
+        delete_files = sorted(existing_files - files_to_upload)
+        update_files = sorted(files_to_upload & existing_files)
 
         self.add_files({ k:files[k] for k in add_files })
         self.update_files({ k:files[k] for k in update_files })
@@ -262,7 +319,6 @@ class CrowdInClient(object):
             files_batch, files = self._split_dict(files, batch_size)
             files_batch = self._format_files_dict(files_batch)
 
-            print action, files_batch.keys()
             response = requests.post(url, files=files_batch)
 
             if response.status_code != 200:

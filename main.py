@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import cStringIO
 import os
 import zipfile
 
@@ -7,84 +8,124 @@ import format
 import secrets
 import youtube
 
+# http://www.science.co.il/Language/Locale-Codes.asp
+DISPLAY_NAMES = {
+    'af': 'Afrikaans',
+    'ar': 'Arabic',
+    'ca': 'Catalan',
+    'cs': 'Czech',
+    'da': 'Danish',
+    'de': 'German',
+    'el': 'Greek',
+    'en': 'English',
+    'es-ES': 'Spanish',
+    'fi': 'Finnish',
+    'fr': 'French',
+    'he': 'Hebrew',
+    'hu': 'Hungarian',
+    'it': 'Italian',
+    'ja': 'Japanese',
+    'ko': 'Korean',
+    'nl': 'Dutch',
+    'no': 'Norwegian',
+    'pl': 'Polish',
+    'pt-BR': 'Portuguese - Brazil',
+    'pt-PT': 'Portuguese - Portugal',
+    'ro': 'Romanian',
+    'ru': 'Russian',
+    'sr': 'Serbian',
+    'sv-SE': 'Swedish',
+    'tr': 'Turkish',
+    'uk': 'Ukrainian',
+    'vi': 'Vietnamese',
+    'zh-CN': 'Chinese - China',
+    'zh-TW': 'Chinese - Taiwan',
+}
 
-def test_youtube_to_crowdin_sync():
-
-    fetcher = youtube.YouTubeCaptionEditor(secrets.google_email,
-        secrets.google_password, secrets.youtube_username)
-
-    fetcher.get_videos()
-    print 'Found %i videos' % len(fetcher.videos)
-    videos_with_tracks = [v for k,v in fetcher.videos.iteritems() if v.has_entries]
-
-    # Unlisted / Private videos don't return captions, even tho they have them
-    print 'Found %i videos with caption tracks' % len(videos_with_tracks)
-
-    for v in videos_with_tracks:
-        v.get_caption_tracks()
-
-        print '%s has the following caption tracks' % v.title
-
-        for src, caption_track in v.caption_tracks.iteritems():
-            if not caption_track.track_content:
-                continue  # It's not downloaded yet
-
-            num_lines = len(caption_track.track_content.split('\n'))
-
-            file_name = '%s_%i_%s_%s.srt' % (
-                caption_track.language, num_lines,
-                caption_track.machine_generated, caption_track.track_id)
-
-            root_dir = '/tmp/downloaded_subtitles'
-            file_name = os.path.join(root_dir, file_name)
-            print '\t%s: %i lines, Machine generated = %s, written to %s' % (
-                caption_track.language, num_lines,
-                caption_track.machine_generated, file_name)
-
-            if caption_track.machine_generated:
-                reader = format.SubTranscriptReader(caption_track.track_content)
-
-                writer = format.PotTranscriptWriter(reader)
-                # print writer.pot_content
-
-                files_to_add = {
-                    'test1/test.pot': writer.get_file(),
-                    'test1/test2.pot': writer.get_file(),
-                }
-
-                print 'Syncing to CrowdIn'
-                ci_client = crowdin.CrowdInClient(secrets.crowdin_ident, secrets.crowdin_key)
-                ci_client.sync_files(files_to_add)
-
-def test_crowdin_to_youtube_sync():
-    ci_client = crowdin.CrowdInClient(secrets.crowdin_ident, secrets.crowdin_key)
-
-    # Only works every 30 min
-    # print ci_client.build_export_zip()
-
-    # zip_contents = ci_client.download_translations()
-    # with open('/tmp/all.zip', 'w') as f:
-    #     f.write(zip_contents)
+def get_display_name_for_locale_code(locale_code):
+    # TODO(mattfaus): Do something more elegant here
+    return DISPLAY_NAMES.get(locale_code) or locale_code
 
 
-    example_po = '/Users/mattfaus/dev/CrowdTube-Connector/examples/testVideo1.sub-es-ES.po'
+def perform_full_sync(export=False):
 
-    with open(example_po, 'r') as ep:
-        reader = format.PotTranscriptReader(ep.read())
-
-    # print reader.list_entries()
-    writer = format.SubTranscriptWriter(reader)
-
+    # Initialize client libraries
     yt_client = youtube.YouTubeCaptionEditor(secrets.google_email,
         secrets.google_password, secrets.youtube_username)
 
-    yt_client.add_track('Jom6EtXzRMg', 'English (ctc)', 'EN', writer.content)
+    ci_client = crowdin.CrowdInClient(secrets.crowdin_ident, secrets.crowdin_key)
 
-    # For each language in the zipfile:
-        # Create the track contents
+    # Build and download the CrowdIn captions
 
-        # Delete the old one from YouTube
-        # Add the new one
+    if export:
+        ci_client.build_export_zip()
+
+    zipped_translations = crowdin.CrowdInZipFile(ci_client.download_translations())
+    print 'Found %i translation files' % zipped_translations.get_file_count()
+
+    # Pull the YouTube videos
+    yt_client.get_videos()
+    print 'Found %i videos on YouTube' % len(yt_client.videos)
+
+    for video_id, video in yt_client.videos.iteritems():
+        print 'Processing', video_id
+
+        po_path = crowdin.CrowdInZipFile.get_po_path(video.title, video_id)
+
+        existing_translations = zipped_translations.get_all_translations(po_path)
+
+        if existing_translations:
+            print '-- Captions found, updating YouTube with %i translations' % len(existing_translations)
+
+            video.get_caption_tracks()
+            for src, caption_track in video.caption_tracks.iteritems():
+                # Update existing tracks
+                new_po_content = existing_translations.get(caption_track.language)
+                if not new_po_content:
+                    # How did this track get on YouTube, wasn't this tool!
+                    print '-- Corresponding track not found for', caption_track.language
+                    continue
+
+                po_reader = format.PotTranscriptReader(new_po_content)
+                sub_writer = format.SubTranscriptWriter(po_reader)
+
+                print '-- Uploading an updated track for', caption_track.language
+                yt_client.update_track(video_id, caption_track.track_id, sub_writer.content)
+
+                # Remove it from the list, so we know this does not need to
+                # be added
+                del existing_translations[caption_track.language]
+
+            # These are newly approved translations that need to be added
+            for lang, po_content in existing_translations.iteritems():
+                po_reader = format.PotTranscriptReader(po_content)
+                sub_writer = format.SubTranscriptWriter(po_reader)
+
+                display_name = get_display_name_for_locale_code(lang)
+
+                print '-- Uploading a new track for', display_name
+                yt_client.add_track(video_id, display_name, lang, sub_writer.content)
+        else:
+            print '-- No captions found in CrowdIn, attempting to upload'
+
+            # Get the machine-generated caption-track from YT
+            machine_track = video.get_machine_generated_track()
+
+            # Can't do anything of there isn't a machine-generated track
+            if not machine_track:
+                print '-- Did not have a machine-generated track.'
+                continue
+
+            # Convert to .po format
+            sub_reader = format.SubTranscriptReader(machine_track.track_content)
+            pot_writer = format.PotTranscriptWriter(sub_reader)
+
+            # Upload to CrowdIn
+            # TODO(mattfaus): sync_files() can batch things, maybe that's faster?
+            print '-- Uploading machine-generated captions to CrowdIn:', po_path
+            ci_client.sync_files({
+                po_path: pot_writer.get_file()
+            })
 
 
 if __name__ == "__main__":
@@ -92,5 +133,7 @@ if __name__ == "__main__":
     # machine-generated tracks, to a specific destination directory,
     # transform into different file formats, etc.
 
-    # test_youtube_to_crowdin_sync()
-    test_crowdin_to_youtube_sync()
+    perform_full_sync()
+
+    # Do this to build a new export, but it only works every 30 mins
+    # perform_full_sync(export=True)

@@ -1,41 +1,6 @@
 import cStringIO
 import re
 
-Format = {
-    'SRT': '.srt',
-    'POT': '.pot',
-}
-
-class Convertor(object):
-
-    def __init__(self, original, format):
-        self._check_format(format)
-        self.original = original
-        self.format = format
-        self.file_content = {}
-
-        self.file_content[self.format] = self.original
-
-    def _check_format(self, format):
-        if format not in Format:
-            raise ValueError('Format %s not understood.' % format)
-
-    def convert_to(self, format):
-        self._check_format(format)
-
-        if self.file_content[format]:
-            # Conversion has already been done
-            return self.file_content[format]
-
-        if self.format == 'SRT' and format == 'POT':
-            new_file_content = self.convert_from_srt_to_pot(self.original)
-
-        self.file_content[format] = new_file_content
-
-    @staticmethod
-    def convert_from_srt_to_pot(self, srt_content):
-        pass
-
 
 class TranscriptReader(object):
     """Returns subtitle entries stored in either a .sub file or a .pot file."""
@@ -190,7 +155,6 @@ msgstr \"%(text)s\"
             }
 
 
-
 class SubTranscriptWriter(TranscriptWriter):
 
     ENTRY_FORMAT = (
@@ -211,5 +175,4 @@ class SubTranscriptWriter(TranscriptWriter):
                 'timestamp': entry[0],
                 'text': entry[1],
             }
-
 
