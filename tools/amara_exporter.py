@@ -17,6 +17,7 @@ import os
 import sys
 import requests
 import threading
+import time
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import secrets
@@ -53,20 +54,29 @@ class Downloader(threading.Thread):
         self.dest_file_path = dest_file_path
         self.custom_headers = headers
         self.get_kwargs = get_kwargs
+        self.exception = None
 
     def start_synchronous(self):
         self.start()
         self.join()
 
     def run(self):
-        self.response = self._download(self.url)
+        try:
+            self.response = self._download(self.url)
 
-        if self.response.status_code != 200:
-            # The caller should check self.response for any errors and context
-            return
+            if self.response.status_code != 200:
+                # The caller should check self.response for any errors and context
+                return
 
-        if self.dest_file_path:
-            self._stream_to_file()
+            if self.dest_file_path:
+                self._stream_to_file()
+        except Exception, ce:
+            # TODO(mattfaus): Find the real ConnectionError class and only catch that
+            # ConnectionError: HTTPSConnectionPool(host='www.amara.org', port=443):
+            # Max retries exceeded with url: /api2/partners/videos/3KKcDNFFF75y/languages/en/subtitles/
+            # (Caused by <class 'socket.gaierror'>: [Errno 8] nodename nor servname provided, or not known)
+            print 'ConnectionError received', ce
+            self.exception = ce
 
     def _stream_to_file(self, chunk_size=100 * 1024):
         if not self.dest_file_path:
@@ -137,14 +147,21 @@ def get_amara_video_info(youtube_id):
       ]
     }
     """
-    url = BASE_AMARA_URL + '/api2/partners/videos/?video_url=' + BASE_YOUTUBE_URL + youtube_id
-    response = requests.get(url, headers=AMARA_AUTH_HEADERS, verify=False)
+    try:
+        url = BASE_AMARA_URL + '/api2/partners/videos/?video_url=' + BASE_YOUTUBE_URL + youtube_id
+        response = requests.get(url, headers=AMARA_AUTH_HEADERS, verify=False)
 
-    if response.status_code != 200:
-        print 'Non-200 received', response.status_code, response.text
+        if response.status_code != 200:
+            print 'Non-200 received', response.status_code, response.text
+            return {}
+
+        return response.json()
+    except Exception, ce:
+        # ConnectionError: HTTPSConnectionPool(host='www.amara.org', port=443):
+        # Max retries exceeded with url: /api2/partners/videos/3KKcDNFFF75y/languages/en/subtitles/
+        # (Caused by <class 'socket.gaierror'>: [Errno 8] nodename nor servname provided, or not known)
+        print 'ConnectionError received', ce
         return {}
-
-    return response.json()
 
 
 def download_subtitle_data(subtitles_uri, dest_file):
@@ -162,7 +179,7 @@ def download_subtitle_data(subtitles_uri, dest_file):
     return downloader
 
 
-def export(all_youtube_ids, dest_dir):
+def export(all_youtube_ids, dest_dir, sleep_secs):
     """
     Arguments:
         all_youtube_ids - a list of all youtube_ids to export
@@ -171,6 +188,9 @@ def export(all_youtube_ids, dest_dir):
     downloader_threads = []
 
     for youtube_id in all_youtube_ids:
+        if sleep_secs:
+            print 'Sleeping for %i seconds' % sleep_secs
+            time.sleep(sleep_secs)
         print 'Processing youtube_id', youtube_id
 
         # First, we have to look-up the amara_id, given the youtube_id
@@ -182,7 +202,8 @@ def export(all_youtube_ids, dest_dir):
         for amara_object in amara_objects:
             amara_id = amara_object.get('id', 'UNKNOWN')
             amara_languages = amara_object.get('languages', [])
-            print '-- -- Iterating over %i languages', amara_object.get('resource_uri')
+            print '-- -- Iterating over %i languages %s' % (
+                len(amara_languages), amara_object.get('resource_uri'))
 
             for amara_language in amara_languages:
                 subtitles_uri = amara_language.get('subtitles_uri')
@@ -204,10 +225,14 @@ def export(all_youtube_ids, dest_dir):
     for downloader_thread in downloader_threads:
         downloader_thread.join()
 
-        if downloader_thread.response.status_code != 200:
-            print '%s returned status %i - %s' % (
-                downloader_thread.url, downloader_thread.response.status_code,
-                downloader_thread.response.text)
+        if downloader_thread.response:
+            if downloader_thread.response.status_code != 200:
+                print '%s returned status %i - %s' % (
+                    downloader_thread.url, downloader_thread.response.status_code,
+                    downloader_thread.response.text)
+        elif downloader_thread.exception:
+            print '%s threw exception - %s' % (
+                downloader_thread.url, downloader.exception)
 
 
 def main():
@@ -227,6 +252,25 @@ def main():
         action="store", dest="dest_dir",
         help="REQUIRED: A path to a directory where the resulting files will be written",
         default="")
+
+    # Note: I used a value of 5 to download ~5000 videos x ~10 languages
+    # TODO(mattfaus): I'm not sure this actually helped, or if some videos
+    # just had bad DNS or something
+    # TODO(mattfaus): Auto-scale this value based on the number of languages
+    # within each video, i.e. sleep for sleep * len(amara_languages)
+    parser.add_option('-s', '--sleep',
+        action="store", dest="sleep", type="int",
+        help=("Number of seconds to sleep between videos. May alleviate Amara "
+            "connection throttling errors."),
+        default=0)
+
+    # If you have failures during your download, you can do this to
+    # pick up where you left off. (But add the last few videos back in to make
+    # sure they are fully downloaded
+    # http://www.catonmat.net/blog/set-operations-in-unix-shell/
+    # Set of exported youtube_ids (you'll need to modify the second cut's -f for your directory)
+    # l\s ~/misc/amara_subtitle_export/*.json | cut -d'~' -f 1 | cut -d'/' -f 6 | uniq > ~/misc/exported_youtube_ids.txt
+    # comm -23 <(sort ~/misc/all_khan_academy_youtube_ids.txt) <(sort ~/misc/exported_youtube_ids.txt) | sort > ~/misc/not_exported_youtube_ids.txt
 
     options, args = parser.parse_args()
 
@@ -261,7 +305,7 @@ def main():
             orig_len, new_len, (orig_len - new_len))
 
     print 'Exporting %i youtube ids' % new_len
-    export(all_youtube_ids, options.dest_dir)
+    export(all_youtube_ids, options.dest_dir, options.sleep)
 
 
 if __name__ == '__main__':
