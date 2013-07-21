@@ -150,9 +150,18 @@ class PotTranscriptReader(TranscriptReader):
 
 
 class TranscriptWriter(object):
+    def __init__(self, reader):
+        if not isinstance(reader, TranscriptReader):
+            raise ValueError('Must pass a TranscriptReader')
+
+        self.reader = reader
+
     def get_file(self):
         """Returns a file-like object with the contents of the transcript."""
-        raise NotImplemented('Must be implemented in Sub-classes.')
+        return cStringIO.StringIO(self.content)
+
+    def get_file(self):
+        return cStringIO.StringIO(self.content)
 
 
 class PotTranscriptWriter(TranscriptWriter):
@@ -165,29 +174,42 @@ msgstr \"%(text)s\"
 """)
 
     def __init__(self, reader):
-        if not isinstance(reader, TranscriptReader):
-            raise ValueError('Must pass a TranscriptReader')
-
-        self.reader = reader
+        super(PotTranscriptWriter, self).__init__(reader)
         self._build_pot_file()
 
     def _format_line(self, line):
         return line.replace('\n', "\"\n\"")
 
     def _build_pot_file(self):
-        self.pot_content = ""
+        self.content = ""
 
         for entry in self.reader.list_entries():
-            self.pot_content += self.ENTRY_FORMAT % {
+            self.content += self.ENTRY_FORMAT % {
                 'timestamp': entry[0],
                 'text': self._format_line(entry[1]),
             }
 
-    def get_file(self):
-        # TODO(mattfaus): Move into base class?
-        return cStringIO.StringIO(self.pot_content)
-
 
 
 class SubTranscriptWriter(TranscriptWriter):
-    pass
+
+    ENTRY_FORMAT = (
+"""%(timestamp)s
+%(text)s
+
+""")
+
+    def __init__(self, reader):
+        super(SubTranscriptWriter, self).__init__(reader)
+        self._build_sub_file()
+
+    def _build_sub_file(self):
+        self.content = ""
+
+        for entry in self.reader.list_entries():
+            self.content +=self.ENTRY_FORMAT % {
+                'timestamp': entry[0],
+                'text': entry[1],
+            }
+
+

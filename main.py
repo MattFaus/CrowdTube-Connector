@@ -70,9 +70,11 @@ def test_crowdin_to_youtube_sync():
     example_po = '/Users/mattfaus/dev/CrowdTube-Connector/examples/testVideo1.sub-es-ES.po'
 
     with open(example_po, 'r') as ep:
-        r = format.PotTranscriptReader(ep.read())
+        reader = format.PotTranscriptReader(ep.read())
 
-    print r.list_entries()
+    # print reader.list_entries()
+    writer = format.SubTranscriptWriter(reader)
+    print writer.get_file().read()
 
     # For each language in the zipfile:
         # Create the track contents
