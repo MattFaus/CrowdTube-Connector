@@ -245,8 +245,11 @@ class YouTubeClient(gdata.client.GDClient):
                    auth_token=None, **kwargs):
     """Updates a closed-caption track for an existing YouTube video.
     """
-    track_id_text_node = track.get_id().split(':')
-    track_id = track_id_text_node[3]
+    if isinstance(track, gdata.youtube.data.TrackEntry):
+      track_id_text_node = track.get_id().split(':')
+      track_id = track_id_text_node[3]
+    else:
+      track_id = track
     uri = YOUTUBE_CAPTION_URI % (video_id, track_id)
     http_request = atom.http_core.HttpRequest(uri = uri, method = 'PUT')
     dev_key = 'key=' + developer_key
@@ -260,6 +263,6 @@ class YouTubeClient(gdata.client.GDClient):
     }
     http_request.add_body_part(body, http_request.headers['Content-Type'])
     return self.request(http_request = http_request,
-        desired_class = track.__class__, **kwargs)
+        desired_class=gdata.youtube.data.TrackEntry, **kwargs)
 
   UpdateTrack = update_track
