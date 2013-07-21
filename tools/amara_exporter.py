@@ -141,7 +141,7 @@ def get_amara_video_info(youtube_id):
     response = requests.get(url, headers=AMARA_AUTH_HEADERS, verify=False)
 
     if response.status_code != 200:
-        print response.status_code, response.text
+        print 'Non-200 received', response.status_code, response.text
         return {}
 
     return response.json()
@@ -250,7 +250,7 @@ def main():
     if options.youtube_ids_file:
         with open(options.youtube_ids_file, 'r') as id_file:
             for line in id_file.readlines():
-                all_youtube_ids.append(line)
+                all_youtube_ids.append(line.strip())
 
     orig_len = len(all_youtube_ids)
     all_youtube_ids = set(all_youtube_ids)
