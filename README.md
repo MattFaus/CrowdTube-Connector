@@ -6,6 +6,10 @@ A utility that syncs subtitles (a.k.a. captions) between YouTube and CrowdIn.
 Also, the CrowdInClient found in crowdin.py should be useful for other python
 projects who wish to integrate with CrowdIn's API.
 
+SHIPSTOPPERS:
+- "Download Approved Only" functionality not working, it downloads everything
+-- Tried setting "Do not export untranslated" on http://crowdin.net/project/ka-subtitles-test/settings
+
 TODO:
 - Unit tests
 - Logging functionality with verbosity switches

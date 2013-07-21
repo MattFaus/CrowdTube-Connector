@@ -30,6 +30,10 @@ class YouTubeCaptionEditor(object):
             new_video = YouTubeVideo(video, self.youtube_client)
             self.videos[new_video.video_id] = new_video
 
+    def get_video(self, video_id):
+        video_entry = self.youtube_client.get_video_entry(video_id=video_id)
+        return YouTubeVideo(video_entry, self.youtube_client)
+
     def delete_track(self, video_id, track_id):
         """Deletes an existing track."""
         # TODO(mattfaus): Take google_developer_key as a constructor arg?
@@ -37,8 +41,9 @@ class YouTubeCaptionEditor(object):
             client_id=GDATA_API_CLIENT_ID,
             developer_key=secrets.google_developer_key)
 
-        if response.status_code != 200:
-            print response.status_code, response.content
+        # http://docs.python.org/release/2.2.3/lib/httpresponse-objects.html
+        if response.status != 200:
+            print response.status, response.msg
             return False
         return True
 
@@ -48,6 +53,7 @@ class YouTubeCaptionEditor(object):
         If a track with the same title already exists, this will silently fail.
         """
         # TODO(mattfaus): Take google_developer_key as a constructor arg?
+        track_content = track_content.encode('utf-8')
         response = self.youtube_client.create_track(video_id, title, language,
             track_content, client_id=GDATA_API_CLIENT_ID,
             developer_key=secrets.google_developer_key, fmt='sub')
@@ -58,6 +64,7 @@ class YouTubeCaptionEditor(object):
     def update_track(self, video_id, track_id, track_content):
         """Adds a caption track."""
         # TODO(mattfaus): Take google_developer_key as a constructor arg?
+        track_content = track_content.encode('utf-8')
         response = self.youtube_client.update_track(video_id, track_id,
             track_content, client_id=GDATA_API_CLIENT_ID,
             developer_key=secrets.google_developer_key, fmt='sub')
@@ -69,6 +76,8 @@ class YouTubeCaptionEditor(object):
 
 # TODO(mattfaus): Suck these two classes into the YouTubeCaptionEditor, above
 # make the YouTubeCaptionEditor behave more like a full-fledged youtube client
+# Shouldn't have to pass the youtube_client object around to the sub-classes
+# No need to have dictionaries where an array would do just fine (YouTubeVideo.caption_tracks)
 class YouTubeVideo(object):
 
     def __init__(self, video_entry, youtube_client=None):
@@ -94,11 +103,14 @@ class YouTubeVideo(object):
         self.caption_tracks = {}
 
     def get_caption_tracks(self, download=False):
-        if not self.has_entries:
-            return
+        # Don't check self.has_entries.  It may be False when only a
+        # machine-generated caption track exists.
 
         if not self.youtube_client:
             raise ValueError('No youtube client available!')
+
+        # STOPSHIP(mattfaus): get_caption_feed() only returns the first 24 caption tracks
+        # so we must iterate to read more
 
         # TODO(mattfaus): Filter this by language with the 'lr' attribute
         all_captions = self.youtube_client.get_caption_feed(self.caption_feed)
@@ -112,6 +124,7 @@ class YouTubeVideo(object):
     def get_machine_generated_track(self):
         self.get_caption_tracks()
         for src, caption_track in self.caption_tracks.iteritems():
+            print src, caption_track
             if caption_track.machine_generated:
                 caption_track.download_track()
                 return caption_track
