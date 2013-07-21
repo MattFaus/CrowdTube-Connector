@@ -7,7 +7,7 @@ import secrets
 
 GDATA_API_CLIENT_ID = 'CrowdTube-Connector'
 
-class YouTubeCaptionFetcher(object):
+class YouTubeCaptionEditor(object):
 
     def __init__(self, google_email, google_password, youtube_username):
         self.youtube_username = youtube_username
@@ -29,6 +29,44 @@ class YouTubeCaptionFetcher(object):
         for video in all_videos.entry:
             new_video = YouTubeVideo(video, self.youtube_client)
             self.videos[new_video.video_id] = new_video
+
+    def delete_track(self, video_id, track_id):
+        """Deletes an existing track."""
+        # TODO(mattfaus): Take google_developer_key as a constructor arg?
+        response = self.youtube_client.delete_track(video_id, track_id,
+            client_id=GDATA_API_CLIENT_ID,
+            developer_key=secrets.google_developer_key)
+
+        if response.status_code != 200:
+            print response.status_code, response.content
+            return False
+        return True
+
+    def add_track(self, video_id, title, language, track_content):
+        """Adds a caption track.
+
+        If a track with the same title already exists, this will silently fail.
+        """
+        # TODO(mattfaus): Take google_developer_key as a constructor arg?
+        response = self.youtube_client.create_track(video_id, title, language,
+            track_content, client_id=GDATA_API_CLIENT_ID,
+            developer_key=secrets.google_developer_key, fmt='sub')
+
+        # Returns a TrackEntry object
+        return response
+
+    def update_track(self, video_id, track_id, track_content):
+        """Adds a caption track."""
+        # TODO(mattfaus): Take google_developer_key as a constructor arg?
+        response = self.youtube_client.update_track(video_id, track_id,
+            track_content, client_id=GDATA_API_CLIENT_ID,
+            developer_key=secrets.google_developer_key, fmt='sub')
+
+        if response.status_code != 200:
+            print response.status_code, response.content
+            return False
+        return True
+
 
 
 # TODO(mattfaus): Suck these two classes into the YouTubeCaptionEditor, above

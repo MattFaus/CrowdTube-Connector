@@ -1,5 +1,5 @@
 #: 0:00:01.389,0:00:06.839
-msgid "bowhunting was not flawless and discussthe test video that i plan to upload to"
+msgid "CHANGED and discussthe test video that i plan to upload to"
 "bowhunting two"
 msgstr "caza con arco no fue impecable y discutir prueba video that i plan para subir a"
 "caza dos"

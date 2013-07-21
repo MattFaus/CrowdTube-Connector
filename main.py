@@ -10,7 +10,7 @@ import youtube
 
 def test_youtube_to_crowdin_sync():
 
-    fetcher = youtube.YouTubeCaptionFetcher(secrets.google_email,
+    fetcher = youtube.YouTubeCaptionEditor(secrets.google_email,
         secrets.google_password, secrets.youtube_username)
 
     fetcher.get_videos()
@@ -74,7 +74,11 @@ def test_crowdin_to_youtube_sync():
 
     # print reader.list_entries()
     writer = format.SubTranscriptWriter(reader)
-    print writer.get_file().read()
+
+    yt_client = youtube.YouTubeCaptionEditor(secrets.google_email,
+        secrets.google_password, secrets.youtube_username)
+
+    yt_client.add_track('Jom6EtXzRMg', 'English (ctc)', 'EN', writer.content)
 
     # For each language in the zipfile:
         # Create the track contents
