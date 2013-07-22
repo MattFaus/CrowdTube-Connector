@@ -4,6 +4,8 @@ A script to export subtitle information out of Amara onto the local drive.
 Launches a thread for each download, so it should be relatively fast.
 Then, we can convert this data into CrowdIn format and upload it there.
 
+Also includes a resume mode to pick up where we left off.
+
 TODO(mattfaus): Add support for other providers (besides YouTube).  All that's
 needed is adding the video_url format, and stitching that together with a
 new list of IDs for each provider.
@@ -24,6 +26,7 @@ import secrets
 
 # BASE_AMARA_URL = 'https://staging.universalsubtitles.org'
 BASE_AMARA_URL = 'https://www.universalsubtitles.org'
+# BASE_AMARA_URL = 'https://www.amara.org'
 
 # Note: https doesn't work, no idea why not
 BASE_YOUTUBE_URL = 'http://www.youtube.com/watch?v='
@@ -54,6 +57,7 @@ class Downloader(threading.Thread):
         self.dest_file_path = dest_file_path
         self.custom_headers = headers
         self.get_kwargs = get_kwargs
+        self.response = None
         self.exception = None
 
     def start_synchronous(self):
@@ -68,6 +72,7 @@ class Downloader(threading.Thread):
                 # The caller should check self.response for any errors and context
                 return
 
+            print 'Starting write to', self.dest_file_path
             if self.dest_file_path:
                 self._stream_to_file()
         except Exception, ce:
@@ -82,9 +87,11 @@ class Downloader(threading.Thread):
         if not self.dest_file_path:
             raise ValueError("I don't know where to write the content.")
 
+        print 'Writing to', dest_file
         with open(self.dest_file_path, 'w') as dest_file:
             for chunk in self.response.iter_content(chunk_size):
                 dest_file.write(chunk)
+        print 'Done writing to', dest_file
 
     def _download(self, url):
         kwargs = {}
@@ -99,6 +106,7 @@ class Downloader(threading.Thread):
         if self.get_kwargs:
             kwargs.update(self.get_kwargs)
 
+        print 'Calling GET on', url
         return requests.get(url, **kwargs)
 
 
@@ -173,13 +181,30 @@ def download_subtitle_data(subtitles_uri, dest_file):
     url = BASE_AMARA_URL + subtitles_uri
 
     downloader = Downloader(url, dest_file, headers=AMARA_AUTH_HEADERS,
-        get_kwargs={'verify':False})
+        get_kwargs={'verify':False, 'max_tries': })
     downloader.start()
 
     return downloader
 
+def already_downloaded(file_name, check_contents=True):
+    """
+    Arguments:
+        file_name
+        check_contents - When False, only check to see if the file exists
+    """
+    if os.path.isfile(file_name):
+        if not check_contents:
+            return True
+        else:
+            with open(file_name, 'r') as prev_download:
+                try:
+                    json.loads(prev_download.read())
+                    return True
+                except:
+                    return False
+    return False
 
-def export(all_youtube_ids, dest_dir, sleep_secs):
+def export(all_youtube_ids, dest_dir, sleep_secs, force_download):
     """
     Arguments:
         all_youtube_ids - a list of all youtube_ids to export
@@ -188,9 +213,6 @@ def export(all_youtube_ids, dest_dir, sleep_secs):
     downloader_threads = []
 
     for youtube_id in all_youtube_ids:
-        if sleep_secs:
-            print 'Sleeping for %i seconds' % sleep_secs
-            time.sleep(sleep_secs)
         print 'Processing youtube_id', youtube_id
 
         # First, we have to look-up the amara_id, given the youtube_id
@@ -216,10 +238,18 @@ def export(all_youtube_ids, dest_dir, sleep_secs):
 
                 file_name = '%s~%s~%s.json' % (youtube_id, amara_id, locale_code)
                 file_name = os.path.join(dest_dir, file_name)
-                print '-- -- -- Fetching subtitles for %s: %s' % (locale_code, file_name)
 
-                new_thread = download_subtitle_data(subtitles_uri, file_name)
-                downloader_threads.append(new_thread)
+                if not force_download and already_downloaded(file_name, check_contents=False):
+                    print '-- -- -- Skipping download for %s: %s' % (locale_code, file_name)
+                else:
+                    print '-- -- -- Fetching subtitles for %s: %s' % (locale_code, file_name)
+
+                    new_thread = download_subtitle_data(subtitles_uri, file_name)
+                    downloader_threads.append(new_thread)
+
+        if sleep_secs:  # sleep == 0 causes infinite sleep
+            print 'Sleeping for %i seconds' % sleep_secs
+            time.sleep(sleep_secs)
 
     print 'Waiting for all threads to join'
     for downloader_thread in downloader_threads:
@@ -232,7 +262,7 @@ def export(all_youtube_ids, dest_dir, sleep_secs):
                     downloader_thread.response.text)
         elif downloader_thread.exception:
             print '%s threw exception - %s' % (
-                downloader_thread.url, downloader.exception)
+                downloader_thread.url, downloader_thread.exception)
 
 
 def main():
@@ -263,6 +293,11 @@ def main():
         help=("Number of seconds to sleep between videos. May alleviate Amara "
             "connection throttling errors."),
         default=0)
+
+    parser.add_option('-x', '--force-download',
+        action="store_true", dest="force_download",
+        help=("Force re-downloading files that already exist in dest-dir."),
+        default=False)
 
     # If you have failures during your download, you can do this to
     # pick up where you left off. (But add the last few videos back in to make
@@ -305,7 +340,7 @@ def main():
             orig_len, new_len, (orig_len - new_len))
 
     print 'Exporting %i youtube ids' % new_len
-    export(all_youtube_ids, options.dest_dir, options.sleep)
+    export(all_youtube_ids, options.dest_dir, options.sleep, options.force_download)
 
 
 if __name__ == '__main__':
