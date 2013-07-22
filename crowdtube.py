@@ -68,7 +68,7 @@ def perform_full_sync(export=False):
     print 'Found %i videos on YouTube' % len(yt_client.videos)
 
     for video_id, video in yt_client.videos.iteritems():
-        print 'Processing', video_id
+        print 'Processing', video_id, video.title
 
         po_path = crowdin.CrowdInZipFile.get_po_path(video.title, video_id)
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     # machine-generated tracks, to a specific destination directory,
     # transform into different file formats, etc.
 
-    perform_full_sync()
+    perform_full_sync(export=True)
 
     # Do this to build a new export, but it only works every 30 mins
     # perform_full_sync(export=True)
