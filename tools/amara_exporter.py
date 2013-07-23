@@ -70,6 +70,7 @@ class Downloader(threading.Thread):
 
             if self.response.status_code != 200:
                 # The caller should check self.response for any errors and context
+                print 'Non-200 response received', self.response.status_code, self.response.text
                 return
 
             print 'Starting write to', self.dest_file_path
@@ -87,11 +88,9 @@ class Downloader(threading.Thread):
         if not self.dest_file_path:
             raise ValueError("I don't know where to write the content.")
 
-        print 'Writing to', dest_file
         with open(self.dest_file_path, 'w') as dest_file:
             for chunk in self.response.iter_content(chunk_size):
                 dest_file.write(chunk)
-        print 'Done writing to', dest_file
 
     def _download(self, url):
         kwargs = {}
@@ -99,9 +98,9 @@ class Downloader(threading.Thread):
         if self.custom_headers:
             kwargs['headers'] = self.custom_headers
 
-        if self.dest_file_path:
-            # If writing to a file, we stream it
-            kwargs['stream'] = True
+        # if self.dest_file_path:
+        #     # If writing to a file, we stream it
+        #     kwargs['stream'] = True
 
         if self.get_kwargs:
             kwargs.update(self.get_kwargs)
@@ -172,6 +171,49 @@ def get_amara_video_info(youtube_id):
         return {}
 
 
+def has_subtitle_entries(resource_uri):
+    """
+    {
+        "created": "2013-05-30T07:24:23",
+        "description": "How changes in Earth's rotation can effect Earth's seasons and climate",
+        "id": "184371",
+        "is_original": false,
+        "is_rtl": false,
+        "is_translation": false,
+        "language_code": "sr",
+        "metadata": {},
+        "name": "Serbian",
+        "num_versions": 0,
+        "official_signoff_count": 0,
+        "original_language_code": null,
+        "resource_uri": "/api2/partners/videos/dtBccSDcJ4b5/languages/sr/",
+        "site_url": "http://www.amara.org/videos/dtBccSDcJ4b5/sr/184371/",
+        "subtitle_count": 0,
+        "title": "Milankovitch Cycles   Precession and Obliquity",
+        "versions": []
+    }
+    """
+    return True
+    try:
+        url = BASE_AMARA_URL + resource_uri
+        response = requests.get(url, headers=AMARA_AUTH_HEADERS, verify=False)
+
+        if response.status_code != 200:
+            print 'Non-200 received', response.status_code, response.text
+            return False
+
+        data = response.json()
+        return data.get('subtitle_count', 0) > 0
+
+    except Exception, ce:
+        # ConnectionError: HTTPSConnectionPool(host='www.amara.org', port=443):
+        # Max retries exceeded with url: /api2/partners/videos/3KKcDNFFF75y/languages/en/subtitles/
+        # (Caused by <class 'socket.gaierror'>: [Errno 8] nodename nor servname provided, or not known)
+        print 'ConnectionError received', ce
+        return {}
+
+
+
 def download_subtitle_data(subtitles_uri, dest_file):
     """Starts a background thread to download subtitile data into a file.
 
@@ -181,7 +223,7 @@ def download_subtitle_data(subtitles_uri, dest_file):
     url = BASE_AMARA_URL + subtitles_uri
 
     downloader = Downloader(url, dest_file, headers=AMARA_AUTH_HEADERS,
-        get_kwargs={'verify':False, 'max_tries': })
+        get_kwargs={'verify':False})
     downloader.start()
 
     return downloader
@@ -212,6 +254,11 @@ def export(all_youtube_ids, dest_dir, sleep_secs, force_download):
     """
     downloader_threads = []
 
+    # Shuffle them so we can try to make some progress when restarting
+    import random
+    all_youtube_ids = list(all_youtube_ids)
+    random.shuffle(all_youtube_ids)
+
     for youtube_id in all_youtube_ids:
         print 'Processing youtube_id', youtube_id
 
@@ -228,6 +275,13 @@ def export(all_youtube_ids, dest_dir, sleep_secs, force_download):
                 len(amara_languages), amara_object.get('resource_uri'))
 
             for amara_language in amara_languages:
+                resource_uri = amara_language.get('resource_uri')
+
+                if not has_subtitle_entries(resource_uri):
+                    print 'Does not have subtitles, skipping download.'
+                    continue
+
+
                 subtitles_uri = amara_language.get('subtitles_uri')
                 locale_code = amara_language.get('code', 'UNKNOWN')
                 # TODO(mattfaus): Do we also want the data behind resource_uri?
@@ -239,7 +293,7 @@ def export(all_youtube_ids, dest_dir, sleep_secs, force_download):
                 file_name = '%s~%s~%s.json' % (youtube_id, amara_id, locale_code)
                 file_name = os.path.join(dest_dir, file_name)
 
-                if not force_download and already_downloaded(file_name, check_contents=False):
+                if not force_download and already_downloaded(file_name, check_contents=True):
                     print '-- -- -- Skipping download for %s: %s' % (locale_code, file_name)
                 else:
                     print '-- -- -- Fetching subtitles for %s: %s' % (locale_code, file_name)
